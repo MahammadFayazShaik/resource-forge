@@ -1,103 +1,285 @@
-import Image from "next/image";
+"use client";
+
+import React, { useState } from "react";
+import Papa from "papaparse";
+import * as XLSX from "xlsx";
+
+import "../globals.css";
+import FileUploader from "@/components/FileUploader";
+import ExportManager from "@/components/ExportManager";
+import { DataGrid } from "@/components/DataGrid";
+import { DataValidator } from "@/utils/validateData";
+import {RuleBuilder} from '@/components/RuleBuilder'; 
+import Footer from "@/components/Footer";
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.js
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [view, setView] = useState("upload");
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+  const [uploadedFiles, setUploadedFiles] = useState({
+    clients: [],
+    workers: [],
+    tasks: [],
+  });
+
+  const [validationErrors, setValidationErrors] = useState({
+    clients: [],
+    workers: [],
+    tasks: [],
+    crossCheck: [],
+  });
+
+  const [validationStats, setValidationStats] = useState({
+    totalRecords: 0,
+    errors: 0,
+    warnings: 0,
+    dataQuality: 100,
+  });
+
+  // New state to store business rules
+  const [rules, setRules] = useState([]);
+
+  // Cross validation for references between datasets
+  const performCrossValidation = (clients, workers, tasks) => {
+    const taskIds = new Set(tasks.map((t) => t.TaskID || t.id));
+    const workerIds = new Set(workers.map((w) => w.WorkerID || w.id));
+    const crossErrors = [];
+
+    clients.forEach((client) => {
+      if (!client.RequestedTaskIDs) return;
+      const taskIdList = client.RequestedTaskIDs.split(/[,;]/).map((id) => id.trim());
+      taskIdList.forEach((taskId) => {
+        if (taskId && !taskIds.has(taskId)) {
+          crossErrors.push({
+            entity: "client",
+            entityId: client.ClientID || client.id,
+            field: "RequestedTaskIDs",
+            message: `Task ID ${taskId} not found in uploaded Tasks`,
+            type: "error",
+          });
+        }
+      });
+    });
+
+    tasks.forEach((task) => {
+      if (task.AssignedWorkerID && !workerIds.has(task.AssignedWorkerID)) {
+        crossErrors.push({
+          entity: "task",
+          entityId: task.TaskID || task.id,
+          field: "AssignedWorkerID",
+          message: `Assigned Worker ID ${task.AssignedWorkerID} not found in uploaded Workers`,
+          type: "error",
+        });
+      }
+    });
+
+    return crossErrors;
+  };
+
+  // Parses CSV or XLSX file and updates state + validation
+  const handleFileUpload = (file, type) => {
+    const isExcel =
+      file.name.toLowerCase().endsWith(".xlsx") || file.name.toLowerCase().endsWith(".xls");
+
+    if (isExcel) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: "array" });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const parsedData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+        updateFilesAndValidate(parsedData, type);
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: (results) => {
+          updateFilesAndValidate(results.data, type);
+        },
+        error: (error) => {
+          console.error("CSV parse error:", error);
+          alert(`Error parsing ${file.name}: ${error.message}`);
+        },
+      });
+    }
+  };
+
+  // Update uploaded files and trigger validation if all files present
+  const updateFilesAndValidate = (parsedData, type) => {
+    setUploadedFiles((prev) => {
+      const updatedFiles = { ...prev, [type]: parsedData };
+
+      if (updatedFiles.clients.length && updatedFiles.workers.length && updatedFiles.tasks.length) {
+        const validator = new DataValidator(updatedFiles.clients, updatedFiles.workers, updatedFiles.tasks);
+        const { results, summary } = validator.validate();
+
+        const crossErrors = performCrossValidation(updatedFiles.clients, updatedFiles.workers, updatedFiles.tasks);
+
+        const groupedErrors = {
+          clients: results.filter((e) => e.entity === "client"),
+          workers: results.filter((e) => e.entity === "worker"),
+          tasks: results.filter((e) => e.entity === "task"),
+          crossCheck: crossErrors,
+        };
+
+        setValidationErrors(groupedErrors);
+        setValidationStats({
+          totalRecords:
+            updatedFiles.clients.length + updatedFiles.workers.length + updatedFiles.tasks.length,
+          errors: results.filter((e) => e.type === "error").length + crossErrors.length,
+          warnings: results.filter((e) => e.type === "warning").length,
+          dataQuality: summary.dataQuality || 100,
+        });
+      }
+
+      return updatedFiles;
+    });
+  };
+
+  const uploadTypes = [
+    {
+      type: "clients",
+      label: "Upload Client Data",
+      description: "Upload your client spreadsheet for validation and AI enhancements.",
+    },
+    {
+      type: "workers",
+      label: "Upload Worker Data",
+      description: "Upload your worker spreadsheet to detect overload and optimize assignments.",
+    },
+    {
+      type: "tasks",
+      label: "Upload Task Data",
+      description: "Upload your task spreadsheet for rule generation and scheduling insights.",
+    },
+  ];
+
+  return (
+    <main className="min-h-screen bg-[#121212] text-white px-6 py-10 font-sans">
+      <h1 className="text-3xl md:text-4xl font-bold text-center text-purple-500 mb-4">
+        Resource Forge AI
+      </h1>
+      <p className="text-center text-gray-300 max-w-3xl mx-auto mb-10">
+        Transform chaotic spreadsheets into intelligent resource allocation with AI-powered data processing,
+        validation, and rule generation.
+      </p>
+
+      <div className="flex justify-center gap-4 mb-8 flex-wrap">
+        {["Smart Data Processing", "AI Validation", "Rule Generation"].map((label) => (
+          <span
+            key={label}
+            className="bg-[#1f1f1f] text-white px-5 py-2 rounded-full border border-purple-500 hover:bg-purple-600 transition"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+            {label}
+          </span>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <div className="bg-[#1f1f1f] rounded-xl p-4 shadow-md">
+          <p className="text-sm text-gray-400">Total Records</p>
+          <p className="text-xl text-purple-400 font-semibold">{validationStats.totalRecords}</p>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+        <div className="bg-[#1f1f1f] rounded-xl p-4 shadow-md">
+          <p className="text-sm text-gray-400">Data Quality</p>
+          <p className="text-xl text-green-400 font-semibold">{validationStats.dataQuality}</p>
+        </div>
+        <div className="bg-[#1f1f1f] rounded-xl p-4 shadow-md">
+          <p className="text-sm text-gray-400">Errors / Warnings</p>
+          <p className="text-xl">
+            <span className="text-red-400 font-semibold">{validationStats.errors}</span>
+            <span className="mx-2">/</span>
+            <span className="text-orange-400 font-semibold">{validationStats.warnings}</span>
+          </p>
+        </div>
+      </div>
+
+      <div className="flex justify-center gap-4 mb-6 flex-wrap">
+        {["upload", "validation", "rules", "export"].map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setView(tab)}
+            className={`px-6 py-2 rounded-full border transition text-sm md:text-base ${
+              view === tab ? "bg-purple-500 text-white" : "border-gray-600 text-gray-400 hover:bg-[#1f1f1f]"
+            }`}
+          >
+            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+          </button>
+        ))}
+      </div>
+
+      {view === "upload" && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {uploadTypes.map(({ type, label, description }) => (
+            <FileUploader key={type} label={label} description={description} entityType={type} onFileSelect={(file) => handleFileUpload(file, type)} />
+          ))}
+        </div>
+      )}
+
+      {view === "validation" && (
+        <>
+          {["clients", "workers", "tasks"].map((type) => (
+            <DataGrid
+              key={type}
+              entityType={type}
+              data={uploadedFiles[type]}
+              validationErrors={validationErrors[type]}
+              onDataChange={(newData, entityType) =>
+                setUploadedFiles((prev) => ({
+                  ...prev,
+                  [entityType]: newData,
+                }))
+              }
+              onNaturalLanguageSearch={(query, type) => {
+                console.log("Search Query:", query, "on", type);
+              }}
+            />
+          ))}
+
+          {validationErrors.crossCheck.length > 0 && (
+            <div className="bg-red-900 text-red-200 p-4 mt-6 rounded">
+              <h3 className="text-lg font-semibold mb-2">Cross-Validation Errors</h3>
+              <ul className="list-disc list-inside space-y-1">
+                {validationErrors.crossCheck.map((err, idx) => (
+                  <li key={idx}>
+                    <strong>
+                      {err.entity} [{err.entityId}]
+                    </strong>{" "}
+                    — {err.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
+      )}
+
+      {view === "rules" && (
+        <RuleBuilder
+          clients={uploadedFiles.clients}
+          workers={uploadedFiles.workers}
+          tasks={uploadedFiles.tasks}
+          rules={rules}
+          onRulesChange={setRules}
+        />
+      )}
+
+      {view === "export" && <ExportManager
+  validationStats={validationStats}
+  clients={uploadedFiles.clients}
+  workers={uploadedFiles.workers}
+  tasks={uploadedFiles.tasks}
+  rules={rules}
+/>
+}   
+
+<Footer />
+
+
+
+ </main>
   );
 }

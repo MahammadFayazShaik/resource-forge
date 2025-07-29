@@ -1,0 +1,31 @@
+.validation-summary {
+  background-color: #1e1e2f;
+  color: #f8d34c;
+  border-left: 4px solid #f8d34c;
+  padding: 16px;
+  margin-top: 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.validation-summary h4 {
+  margin-bottom: 12px;
+  color: #fff;
+}
+
+.validation-summary ul {
+  padding-left: 16px;
+  margin: 0;
+}
+
+.validation-summary li {
+  margin-bottom: 8px;
+}
+
+.no-errors {
+  background-color: #1e2f1e;
+  color: #a5f3a1;
+  border-left-color: #22c55e;
+}

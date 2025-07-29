@@ -1,0 +1,30 @@
+/* Footer.css */
+.footer {
+  border-top: 1px solid #444;
+  padding: 1rem;
+  margin-top: 2rem;
+  color: #ccc;
+  background-color: #111;
+  font-size: 0.875rem;
+}
+
+.footer-content {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.footer a {
+  color: #ccc;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-decoration: none;
+  transition: color 0.3s ease;
+}
+
+.footer a:hover {
+  color: #00bfff;
+}
