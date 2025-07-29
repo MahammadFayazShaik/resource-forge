@@ -131,13 +131,14 @@ const FileUploader = ({
       </p>
 
       {showToast && (
-        <div className="upload-toast">
-          <CheckCircle size={20} className="toast-icon" />
-          <span>
-            {entityType} file "{selectedFile?.name}" uploaded successfully!
-          </span>
-        </div>
-      )}
+  <div className="upload-toast">
+    <CheckCircle size={20} className="toast-icon" />
+    <span>
+      {entityType} file &quot;{selectedFile?.name}&quot; uploaded successfully!
+    </span>
+  </div>
+)}
+
     </div>
   );
 };
