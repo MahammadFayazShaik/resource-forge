@@ -228,10 +228,11 @@ export const RuleBuilder = ({ clients = [], workers = [], tasks = [], rules = []
                   setRuleParameters({
                     ...ruleParameters,
                     tasks: e.target.value ? e.target.value.split(',') : []
+                
                   })
                 }
                 multiple
-                className="h-32"
+                className="h-32 text-black"
               >
                 {tasks.map(task => (
                   <Option key={task.TaskID} value={task.TaskID}>
@@ -407,7 +408,7 @@ export const RuleBuilder = ({ clients = [], workers = [], tasks = [], rules = []
               value={ruleDescription}
               onChange={e => setRuleDescription(e.target.value)}
               placeholder="Describe what this rule does"
-              className="min-h-[4rem]"
+              className="min-h-[4rem] text-black"
             />
           </div>
 

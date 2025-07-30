@@ -9,7 +9,7 @@ import FileUploader from "@/components/FileUploader";
 import ExportManager from "@/components/ExportManager";
 import { DataGrid } from "@/components/DataGrid";
 import { DataValidator } from "@/utils/validateData";
-import {RuleBuilder} from '@/components/RuleBuilder'; 
+import { RuleBuilder } from "@/components/RuleBuilder";
 import Footer from "@/components/Footer";
 
 export default function Home() {
@@ -25,7 +25,6 @@ export default function Home() {
     clients: [],
     workers: [],
     tasks: [],
-    crossCheck: [],
   });
 
   const [validationStats, setValidationStats] = useState({
@@ -35,10 +34,8 @@ export default function Home() {
     dataQuality: 100,
   });
 
-  // New state to store business rules
   const [rules, setRules] = useState([]);
 
-  // Cross validation for references between datasets
   const performCrossValidation = (clients, workers, tasks) => {
     const taskIds = new Set(tasks.map((t) => t.TaskID || t.id));
     const workerIds = new Set(workers.map((w) => w.WorkerID || w.id));
@@ -75,10 +72,8 @@ export default function Home() {
     return crossErrors;
   };
 
-  // Parses CSV or XLSX file and updates state + validation
   const handleFileUpload = (file, type) => {
-    const isExcel =
-      file.name.toLowerCase().endsWith(".xlsx") || file.name.toLowerCase().endsWith(".xls");
+    const isExcel = file.name.toLowerCase().endsWith(".xlsx") || file.name.toLowerCase().endsWith(".xls");
 
     if (isExcel) {
       const reader = new FileReader();
@@ -88,7 +83,6 @@ export default function Home() {
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
         const parsedData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
-
         updateFilesAndValidate(parsedData, type);
       };
       reader.readAsArrayBuffer(file);
@@ -107,29 +101,46 @@ export default function Home() {
     }
   };
 
-  // Update uploaded files and trigger validation if all files present
   const updateFilesAndValidate = (parsedData, type) => {
     setUploadedFiles((prev) => {
       const updatedFiles = { ...prev, [type]: parsedData };
 
       if (updatedFiles.clients.length && updatedFiles.workers.length && updatedFiles.tasks.length) {
-        const validator = new DataValidator(updatedFiles.clients, updatedFiles.workers, updatedFiles.tasks);
+        const validator = new DataValidator(
+          updatedFiles.clients,
+          updatedFiles.workers,
+          updatedFiles.tasks
+        );
         const { results, summary } = validator.validate();
 
-        const crossErrors = performCrossValidation(updatedFiles.clients, updatedFiles.workers, updatedFiles.tasks);
+        const crossErrors = performCrossValidation(
+          updatedFiles.clients,
+          updatedFiles.workers,
+          updatedFiles.tasks
+        );
 
         const groupedErrors = {
-          clients: results.filter((e) => e.entity === "client"),
-          workers: results.filter((e) => e.entity === "worker"),
-          tasks: results.filter((e) => e.entity === "task"),
-          crossCheck: crossErrors,
+          clients: [
+            ...results.filter((e) => e.entity === "client"),
+            ...crossErrors.filter((e) => e.entity === "client"),
+          ],
+          workers: [
+            ...results.filter((e) => e.entity === "worker"),
+            ...crossErrors.filter((e) => e.entity === "worker"),
+          ],
+          tasks: [
+            ...results.filter((e) => e.entity === "task"),
+            ...crossErrors.filter((e) => e.entity === "task"),
+          ],
         };
 
         setValidationErrors(groupedErrors);
+
         setValidationStats({
           totalRecords:
             updatedFiles.clients.length + updatedFiles.workers.length + updatedFiles.tasks.length,
-          errors: results.filter((e) => e.type === "error").length + crossErrors.length,
+          errors:
+            results.filter((e) => e.type === "error").length + crossErrors.length,
           warnings: results.filter((e) => e.type === "warning").length,
           dataQuality: summary.dataQuality || 100,
         });
@@ -203,7 +214,9 @@ export default function Home() {
             key={tab}
             onClick={() => setView(tab)}
             className={`px-6 py-2 rounded-full border transition text-sm md:text-base ${
-              view === tab ? "bg-purple-500 text-white" : "border-gray-600 text-gray-400 hover:bg-[#1f1f1f]"
+              view === tab
+                ? "bg-purple-500 text-white"
+                : "border-gray-600 text-gray-400 hover:bg-[#1f1f1f]"
             }`}
           >
             {tab.charAt(0).toUpperCase() + tab.slice(1)}
@@ -214,7 +227,13 @@ export default function Home() {
       {view === "upload" && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {uploadTypes.map(({ type, label, description }) => (
-            <FileUploader key={type} label={label} description={description} entityType={type} onFileSelect={(file) => handleFileUpload(file, type)} />
+            <FileUploader
+              key={type}
+              label={label}
+              description={description}
+              entityType={type}
+              onFileSelect={(file) => handleFileUpload(file, type)}
+            />
           ))}
         </div>
       )}
@@ -238,22 +257,6 @@ export default function Home() {
               }}
             />
           ))}
-
-          {validationErrors.crossCheck.length > 0 && (
-            <div className="bg-red-900 text-red-200 p-4 mt-6 rounded">
-              <h3 className="text-lg font-semibold mb-2">Cross-Validation Errors</h3>
-              <ul className="list-disc list-inside space-y-1">
-                {validationErrors.crossCheck.map((err, idx) => (
-                  <li key={idx}>
-                    <strong>
-                      {err.entity} [{err.entityId}]
-                    </strong>{" "}
-                    — {err.message}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
         </>
       )}
 
@@ -267,19 +270,17 @@ export default function Home() {
         />
       )}
 
-      {view === "export" && <ExportManager
-  validationStats={validationStats}
-  clients={uploadedFiles.clients}
-  workers={uploadedFiles.workers}
-  tasks={uploadedFiles.tasks}
-  rules={rules}
-/>
-}   
+      {view === "export" && (
+        <ExportManager
+          validationStats={validationStats}
+          clients={uploadedFiles.clients}
+          workers={uploadedFiles.workers}
+          tasks={uploadedFiles.tasks}
+          rules={rules}
+        />
+      )}
 
-<Footer />
-
-
-
- </main>
+      <Footer />
+    </main>
   );
 }
